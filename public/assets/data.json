@@ -1,0 +1,19 @@
+[
+  { "folder": "mygo", "prefix": "anon", "name": "千早爱音", "band": "MyGO!!!!!", "count": 5 },
+  { "folder": "mygo", "prefix": "rana", "name": "要乐奈", "band": "MyGO!!!!!", "count": 1 },
+  { "folder": "mygo", "prefix": "soyo", "name": "长崎素世", "band": "MyGO!!!!!", "count": 2 },
+  { "folder": "gbc", "prefix": "486", "name": "安和昴 (486)", "band": "gbc", "count": 7 },
+  { "folder": "gbc", "prefix": "mmk", "name": "河原木桃香", "band": "gbc", "count": 2 },
+  { "folder": "gbc", "prefix": "nina", "name": "井芹仁菜", "band": "gbc", "count": 4 },
+  { "folder": "gbc", "prefix": "rupa", "name": "鲁帕", "band": "gbc", "count": 1 },
+  { "folder": "gbc", "prefix": "tomo", "name": "智", "band": "gbc", "count": 2 },
+  { "folder": "mujica", "prefix": "mutsumi", "name": "若叶睦", "band": "Ave Mujica", "count": 1 },
+  { "folder": "mujica", "prefix": "nyamu", "name": "八幡海铃", "band": "Ave Mujica", "count": 1 },
+  { "folder": "mujica", "prefix": "saki", "name": "丰川祥子", "band": "Ave Mujica", "count": 1 },
+  { "folder": "kon", "prefix": "yui", "name": "平泽唯", "band": "Kon", "count": 1 },
+  { "folder": "kon", "prefix": "azusa", "name": "中野梓", "band": "Kon", "count": 1 },
+  { "folder": "bangdream", "prefix": "kasumi", "name": "户山香澄", "band": "Poppin'Party", "count": 3 },
+  { "folder": "bangdream", "prefix": "arisa", "name": "市谷有咲", "band": "Poppin'Party", "count": 1 },
+  { "folder": "bocchi", "prefix": "nijika", "name": "伊地知虹夏", "band": "Kessoku Band", "count": 1 },
+  { "folder": "bocchi", "prefix": "Kita", "name": "喜多郁代", "band": "Kessoku Band", "count": 1 }
+]
