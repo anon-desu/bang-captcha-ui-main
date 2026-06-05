@@ -9,6 +9,21 @@ const message = ref('');
 const isSuccess = ref(false);
 const loading = ref(false);
 
+// 🛠️ 新增：图片预加载辅助函数
+// 利用浏览器的 Image 对象在后台静默加载图片，确保加载完成后再渲染
+const preloadImages = (urls) => {
+  return Promise.all(
+    urls.map(url => {
+      return new Promise((resolve) => {
+        const img = new Image();
+        img.src = url;
+        img.onload = () => resolve();
+        img.onerror = () => resolve(); // 即使单张图片加载失败也继续，防止界面卡死
+      });
+    })
+  );
+};
+
 // 获取验证码
 const fetchCaptcha = async () => {
   loading.value = true;
@@ -26,6 +41,10 @@ const fetchCaptcha = async () => {
       data.images = data.images.map(img => {
         return img.startsWith('http') ? img : `${API_BASE}${img}`;
       });
+
+      // ⏳ 核心优化：在将新数据赋给 challenge 之前，先预加载好所有图片
+      // 此时界面会保持 loading 状态，用户看不到未加载完的图片
+      await preloadImages(data.images);
     }
     challenge.value = data;
   } catch (error) {
@@ -38,7 +57,7 @@ const fetchCaptcha = async () => {
 
 // 选中/取消选中
 const toggleSelect = (index) => {
-  if (isSuccess.value) return; 
+  if (isSuccess.value || loading.value) return; // 🛠️ 加载中不允许选择
   if (selectedIndexes.value.includes(index)) {
     selectedIndexes.value = selectedIndexes.value.filter(i => i !== index);
   } else {
@@ -48,7 +67,7 @@ const toggleSelect = (index) => {
 
 // 提交验证
 const verifyCaptcha = async () => {
-  if (!challenge.value) return;
+  if (!challenge.value || loading.value) return; // 🛠️ 加载中不允许提交
   loading.value = true;
   
   try {
@@ -78,25 +97,19 @@ const verifyCaptcha = async () => {
             }
         };
 
-        // ⭐⭐⭐ 关键修改开始 ⭐⭐⭐
         // 使用 JSON 序列化再反序列化，彻底剥离 Vue 的 Proxy 响应式外壳
-        // 解决 "Uncaught DOMException: #<Object> could not be cloned" 报错
         const msg = JSON.parse(JSON.stringify(rawMsg));
-        // ⭐⭐⭐ 关键修改结束 ⭐⭐⭐
 
         console.log("📤 发送消息:", msg);
 
         // 🔧 立即发送
         try {
-            // 尝试多种方式发送消息
             if (window.parent && window.parent !== window) {
-                // 方式1：发送给直接父窗口
                 window.parent.postMessage(msg, '*');
                 console.log("✅ 已向 parent 发送消息");
             }
             
             if (window.top && window.top !== window) {
-                // 方式2：发送给顶层窗口
                 window.top.postMessage(msg, '*');
                 console.log("✅ 已向 top 发送消息");
             }
@@ -104,7 +117,7 @@ const verifyCaptcha = async () => {
             // 🔧 延迟发送一次，确保消息被接收
             setTimeout(() => {
                 if (window.parent && window.parent !== window) {
-                    window.parent.postMessage(msg, '*'); // 这里也使用处理过的 msg
+                    window.parent.postMessage(msg, '*');
                     console.log("✅ 再次向 parent 发送消息");
                 }
             }, 100);
@@ -152,6 +165,7 @@ onMounted(() => {
 <template>
   <div class="app-wrapper">
     <div class="captcha-card">
+      <!-- 首次加载的 loading 状态 -->
       <div v-if="loading && !challenge" class="loading-state">
         <div class="spinner"></div>
         <p>正在召唤成员...</p>
@@ -162,7 +176,8 @@ onMounted(() => {
           请选出所有的 <span class="target-name">{{ challenge.targetName }}</span>
         </div>
         
-        <div class="grid">
+        <!-- 🛠️ 绑定了 grid-loading 类以实现加载时的半透明和点击禁用效果 -->
+        <div class="grid" :class="{ 'grid-loading': loading }">
           <div 
             v-for="(img, index) in challenge.images" 
             :key="index"
@@ -180,13 +195,13 @@ onMounted(() => {
         </div>
 
         <div class="footer">
-          <button class="btn refresh" @click="fetchCaptcha" :disabled="isSuccess">
+          <button class="btn refresh" @click="fetchCaptcha" :disabled="isSuccess || loading">
             <span class="icon">↻</span>
           </button>
           <button 
               class="btn verify" 
               @click="verifyCaptcha" 
-              :disabled="selectedIndexes.length === 0 || isSuccess"
+              :disabled="selectedIndexes.length === 0 || isSuccess || loading"
           >
               {{ isSuccess ? '验证通过' : '确认提交' }}
           </button>
@@ -222,7 +237,14 @@ html, body, #app { margin: 0; padding: 0; width: 100%; height: 100%; overflow: h
 .captcha-card { width: 340px; max-width: 90vw; background: #fff; padding: 20px; border-radius: 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); position: relative; box-sizing: border-box; margin: auto; }
 .header { font-size: 16px; margin-bottom: 15px; color: #444; text-align: center; }
 .target-name { color: #e91e63; font-weight: bold; border-bottom: 2px dashed #e91e63; padding-bottom: 2px; }
-.grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 20px; }
+.grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 20px; transition: opacity 0.2s ease; }
+
+/* 🛠️ 新增：加载中的网格状态样式 */
+.grid-loading {
+  pointer-events: none; /* 彻底禁用鼠标和触摸事件，防止误点旧图 */
+  opacity: 0.5;         /* 变淡显示，向用户传达“正在加载”的视觉感受 */
+}
+
 .img-wrapper { position: relative; aspect-ratio: 1; cursor: pointer; border-radius: 8px; overflow: hidden; transition: transform 0.2s; background: #f0f0f0; }
 .img-wrapper:active { transform: scale(0.95); }
 .img-wrapper.active { box-shadow: 0 0 0 3px #e91e63; transform: scale(0.96); }
