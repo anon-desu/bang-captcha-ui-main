@@ -9,8 +9,7 @@ const message = ref('');
 const isSuccess = ref(false);
 const loading = ref(false);
 
-// 🛠️ 新增：图片预加载辅助函数
-// 利用浏览器的 Image 对象在后台静默加载图片，确保加载完成后再渲染
+// 🛠️ 图片预加载辅助函数
 const preloadImages = (urls) => {
   return Promise.all(
     urls.map(url => {
@@ -42,8 +41,7 @@ const fetchCaptcha = async () => {
         return img.startsWith('http') ? img : `${API_BASE}${img}`;
       });
 
-      // ⏳ 核心优化：在将新数据赋给 challenge 之前，先预加载好所有图片
-      // 此时界面会保持 loading 状态，用户看不到未加载完的图片
+      // 预加载所有图片，保证渲染流畅
       await preloadImages(data.images);
     }
     challenge.value = data;
@@ -57,7 +55,7 @@ const fetchCaptcha = async () => {
 
 // 选中/取消选中
 const toggleSelect = (index) => {
-  if (isSuccess.value || loading.value) return; // 🛠️ 加载中不允许选择
+  if (isSuccess.value || loading.value) return; // 加载或已提交时不响应
   if (selectedIndexes.value.includes(index)) {
     selectedIndexes.value = selectedIndexes.value.filter(i => i !== index);
   } else {
@@ -65,99 +63,66 @@ const toggleSelect = (index) => {
   }
 };
 
-// 提交验证
-const verifyCaptcha = async () => {
-  if (!challenge.value || loading.value) return; // 🛠️ 加载中不允许提交
-  loading.value = true;
+// 提交验证（纯前端确认，不调用 /api/verify，避免提前核销 Token）
+const verifyCaptcha = () => {
+  if (!challenge.value || loading.value || selectedIndexes.value.length === 0) return;
   
-  try {
-    const res = await fetch(`${API_BASE}/api/verify`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            id: challenge.value.id,
-            selectedIndexes: selectedIndexes.value
-        })
-    });
-    const data = await res.json();
-
-    if (data.success) {
-        isSuccess.value = true;
-        message.value = ""; 
-        
-        // 🔧 核心逻辑：通知父窗口
-        console.log("✅ 验证通过，准备发送 postMessage...");
-        
-        // 构造原始消息对象
-        const rawMsg = {
-            type: 'CAPTCHA_RESULT',
-            payload: {
-                captchaId: challenge.value.id,
-                selectedIndexes: selectedIndexes.value
-            }
-        };
-
-        // 使用 JSON 序列化再反序列化，彻底剥离 Vue 的 Proxy 响应式外壳
-        const msg = JSON.parse(JSON.stringify(rawMsg));
-
-        console.log("📤 发送消息:", msg);
-
-        // 🔧 立即发送
-        try {
-            if (window.parent && window.parent !== window) {
-                window.parent.postMessage(msg, '*');
-                console.log("✅ 已向 parent 发送消息");
-            }
-            
-            if (window.top && window.top !== window) {
-                window.top.postMessage(msg, '*');
-                console.log("✅ 已向 top 发送消息");
-            }
-            
-            // 🔧 延迟发送一次，确保消息被接收
-            setTimeout(() => {
-                if (window.parent && window.parent !== window) {
-                    window.parent.postMessage(msg, '*');
-                    console.log("✅ 再次向 parent 发送消息");
-                }
-            }, 100);
-            
-        } catch (e) {
-            console.error("❌ postMessage 发送失败:", e);
-        }
-
-        // 🔧 如果是独立窗口打开（调试用）
-        if (window.self === window.top) {
-            console.warn("⚠️ 独立窗口模式，无法发送消息");
-            setTimeout(() => {
-                alert('验证通过！\n(独立窗口模式，请在 iframe 中使用)');
-            }, 1000);
-        }
-
-    } else {
-        message.value = "选错啦，再仔细看看~";
-        selectedIndexes.value = [];
-        setTimeout(() => { 
-            if(!isSuccess.value) {
-                message.value = '';
-                fetchCaptcha(); 
-            }
-        }, 1500);
+  // 1. 设置完成状态界面动画
+  isSuccess.value = true;
+  message.value = ""; 
+  
+  console.log("✅ 验证码已选择，准备发送数据至父页面...");
+  
+  // 2. 构造与原版完全一致的数据格式，交给父窗口发起注册
+  const rawMsg = {
+    type: 'CAPTCHA_RESULT',
+    payload: {
+      captchaId: challenge.value.id,
+      selectedIndexes: [...selectedIndexes.value]
     }
+  };
+
+  const msg = JSON.parse(JSON.stringify(rawMsg));
+
+  // 3. 通知父页面
+  try {
+    if (window.parent && window.parent !== window) {
+      window.parent.postMessage(msg, '*');
+      console.log("✅ 已向 parent 发送消息");
+    }
+    
+    if (window.top && window.top !== window) {
+      window.top.postMessage(msg, '*');
+      console.log("✅ 已向 top 发送消息");
+    }
+    
+    // 延迟 100ms 再次发送，确保父容器捕获
+    setTimeout(() => {
+      if (window.parent && window.parent !== window) {
+        window.parent.postMessage(msg, '*');
+      }
+    }, 100);
   } catch (e) {
-      console.error("❌ 验证请求失败:", e);
-      message.value = "请求出错，请重试";
-  } finally {
-      loading.value = false;
+    console.error("❌ postMessage 发送失败:", e);
+  }
+
+  // 独立窗口打开时的调试提示
+  if (window.self === window.top) {
+    console.warn("⚠️ 独立窗口模式，无法发送消息");
+    setTimeout(() => {
+      alert('已确认选择！\n(独立窗口模式，请在 iframe 中嵌入使用)');
+    }, 600);
   }
 };
 
 onMounted(() => {
   fetchCaptcha();
   
-  // 🔧 调试：监听父窗口消息（双向通信检测）
+  // 监听来自父窗口的消息（例如父窗口注册失败返回“选择错误”时，通知重置验证码）
   window.addEventListener('message', (event) => {
-    console.log("🔔 iframe 收到消息:", event.data);
+    if (event.data?.type === 'RESET_CAPTCHA') {
+      fetchCaptcha();
+    }
   });
 });
 </script>
@@ -176,7 +141,6 @@ onMounted(() => {
           请选出所有的 <span class="target-name">{{ challenge.targetName }}</span>
         </div>
         
-        <!-- 🛠️ 绑定了 grid-loading 类以实现加载时的半透明和点击禁用效果 -->
         <div class="grid" :class="{ 'grid-loading': loading }">
           <div 
             v-for="(img, index) in challenge.images" 
@@ -199,11 +163,11 @@ onMounted(() => {
             <span class="icon">↻</span>
           </button>
           <button 
-              class="btn verify" 
-              @click="verifyCaptcha" 
-              :disabled="selectedIndexes.length === 0 || isSuccess || loading"
+            class="btn verify" 
+            @click="verifyCaptcha" 
+            :disabled="selectedIndexes.length === 0 || isSuccess || loading"
           >
-              {{ isSuccess ? '验证通过' : '确认提交' }}
+            {{ isSuccess ? '已确认' : '确认提交' }}
           </button>
         </div>
 
@@ -212,20 +176,20 @@ onMounted(() => {
         </div>
 
         <transition name="fade">
-            <div v-if="isSuccess" class="success-mask">
-                <div class="success-content">
-                    <div class="big-checkmark">✓</div>
-                    <p>验证通过</p>
-                    <p class="success-hint">正在处理...</p>
-                </div>
+          <div v-if="isSuccess" class="success-mask">
+            <div class="success-content">
+              <div class="big-checkmark">✓</div>
+              <p>已确认</p>
+              <p class="success-hint">正在处理注册...</p>
             </div>
+          </div>
         </transition>
 
       </div>
       
       <div v-else class="error-state" @click="fetchCaptcha">
-          <p>加载失败</p>
-          <button class="btn refresh-link">点击重试</button>
+        <p>加载失败</p>
+        <button class="btn refresh-link">点击重试</button>
       </div>
     </div>
   </div>
@@ -239,10 +203,9 @@ html, body, #app { margin: 0; padding: 0; width: 100%; height: 100%; overflow: h
 .target-name { color: #e91e63; font-weight: bold; border-bottom: 2px dashed #e91e63; padding-bottom: 2px; }
 .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 20px; transition: opacity 0.2s ease; }
 
-/* 🛠️ 新增：加载中的网格状态样式 */
 .grid-loading {
-  pointer-events: none; /* 彻底禁用鼠标和触摸事件，防止误点旧图 */
-  opacity: 0.5;         /* 变淡显示，向用户传达“正在加载”的视觉感受 */
+  pointer-events: none;
+  opacity: 0.5;
 }
 
 .img-wrapper { position: relative; aspect-ratio: 1; cursor: pointer; border-radius: 8px; overflow: hidden; transition: transform 0.2s; background: #f0f0f0; }
